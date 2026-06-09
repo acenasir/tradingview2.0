@@ -139,8 +139,11 @@ Each pane and watchlist row shows a **freshness badge**: `delayed`, `live · IEX
 | `/` | Focus global symbol search |
 | `b` / `s` | Open the buy / sell ticket for the active pane's symbol |
 
-Click a pane to make it **active** — the top toolbar (symbol, timeframe, chart
-type) targets the active pane. Double-click a pane header to maximize/restore.
+Each chart **starts empty** — assign a symbol per pane via the in-pane search
+(or its quick-picks), the pane header's symbol button, the global top-bar search,
+or by clicking a watchlist row. Click a pane to make it **active** — the top
+toolbar (symbol, timeframe, chart type) targets the active pane. Double-click a
+pane header to maximize/restore.
 
 **Drawing:** pick a tool from the left toolbar — **trend line** / **Fib** (click two
 points) or **horizontal line** (click once). `Esc` cancels an in-progress drawing;

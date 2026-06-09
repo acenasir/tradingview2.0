@@ -48,6 +48,8 @@ const DRAW_HINT: Record<string, string> = {
   hline: 'Click to place horizontal line · Esc to cancel',
 };
 
+const QUICK_PICKS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'BTC/USD'];
+
 type AnySeriesData = SeriesDataItemTypeMap[SeriesType];
 type PaneStatus = 'loading' | 'ready' | 'error' | 'notfound' | 'empty';
 
@@ -373,12 +375,14 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
 
         <div className="ml-auto flex items-center gap-1.5">
           <span className="text-2xs text-text-muted">{resolution}</span>
-          <span
-            className={`oc-badge ${freshnessClasses(freshness)}`}
-            title={freshnessTitle(freshness)}
-          >
-            {freshnessLabel(freshness)}
-          </span>
+          {symbol && (
+            <span
+              className={`oc-badge ${freshnessClasses(freshness)}`}
+              title={freshnessTitle(freshness)}
+            >
+              {freshnessLabel(freshness)}
+            </span>
+          )}
           <button
             type="button"
             onClick={(e) => {
@@ -412,10 +416,32 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
             {DRAW_HINT[activeTool] ?? 'Drawing…'}
           </div>
         )}
-        {status !== 'ready' && (
+        {status === 'empty' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-bg px-4">
+            <div className="text-center">
+              <p className="text-sm font-medium text-text">Search a symbol</p>
+              <p className="text-2xs text-text-muted">Assign any symbol to this chart</p>
+            </div>
+            <div className="w-56">
+              <SymbolSearch placeholder="Search symbol…" onSelect={(s) => setPaneSymbol(paneIndex, s)} />
+            </div>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {QUICK_PICKS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setPaneSymbol(paneIndex, s)}
+                  className="rounded border border-border px-2 py-0.5 text-2xs text-text-muted hover:border-accent hover:text-accent"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {(status === 'loading' || status === 'notfound' || status === 'error') && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-text-muted">
             {status === 'loading' && 'Loading…'}
-            {status === 'empty' && 'Search a symbol to load a chart'}
             {status === 'notfound' && `No data for "${symbol}"`}
             {status === 'error' && 'Failed to load — will retry'}
           </div>

@@ -28,17 +28,10 @@ interface LayoutState {
   toggleMaximize: (index: number) => void;
 }
 
-const DEFAULT_SYMBOLS = [
-  'AAPL', 'MSFT', 'NVDA', 'TSLA',
-  'AMZN', 'META', 'GOOGL', 'AMD',
-  'SPY', 'QQQ', 'NFLX', 'JPM',
-  'V', 'DIS', 'BTC/USD', 'ETH/USD',
-];
-
 function makePane(index: number): PaneConfig {
   return {
     id: `pane-${index}-${Math.random().toString(36).slice(2, 8)}`,
-    symbol: DEFAULT_SYMBOLS[index % DEFAULT_SYMBOLS.length],
+    symbol: '', // empty by default — assign a symbol via the in-pane search
     resolution: '1D',
     chartType: 'candlestick',
   };
@@ -84,7 +77,16 @@ export const useLayoutStore = create<LayoutState>()(
     }),
     {
       name: 'openchart.layout',
-      version: 1,
+      version: 2,
+      // v2: stop auto-assigning default symbols — start every pane empty so the
+      // user populates each chart by searching.
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<LayoutState> | undefined;
+        if (state?.panes && version < 2) {
+          state.panes = state.panes.map((p) => ({ ...p, symbol: '' }));
+        }
+        return state as LayoutState;
+      },
       partialize: (s) => ({ preset: s.preset, panes: s.panes, activePane: s.activePane }),
       merge: (persisted, current) => {
         // Be defensive: ensure we always have exactly MAX_PANES configs.

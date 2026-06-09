@@ -73,10 +73,10 @@ describe('App', () => {
     expect(screen.getByText('OpenChart')).toBeTruthy();
     expect(screen.getByText(/Powered by TradingView Lightweight Charts/)).toBeTruthy();
 
-    // Default 2×2 layout shows the first default symbols in pane headers.
-    const aapl = await screen.findAllByText('AAPL');
-    expect(aapl.length).toBeGreaterThan(0);
-    expect(screen.getAllByText('MSFT').length).toBeGreaterThan(0);
+    // Panes start empty — each shows the in-pane symbol search prompt.
+    expect((await screen.findAllByText('Search a symbol')).length).toBeGreaterThan(0);
+    // The default watchlist is still populated (AAPL row).
+    expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0);
 
     // The watchlist tab and timeframe controls rendered.
     expect(screen.getByText('Watchlist')).toBeTruthy();
