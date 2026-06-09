@@ -28,6 +28,7 @@ import { useLayoutStore } from '../store/layoutStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { observeResize } from '../lib/resize';
 import { DrawingsPrimitive } from '../lib/drawingPrimitive';
+import { IndicatorManager } from '../lib/indicatorManager';
 import {
   drawingKey,
   newDrawingId,
@@ -35,6 +36,7 @@ import {
   type Drawing,
   type DrawingPoint,
 } from '../store/drawingStore';
+import { INDICATOR_META, useIndicatorStore, type IndicatorConfig } from '../store/indicatorStore';
 import { SymbolSearch } from './SymbolSearch';
 
 const UP = '#26a69a';
@@ -148,6 +150,8 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
   const addDrawing = useDrawingStore((s) => s.addDrawing);
   const dkey = drawingKey(pane.id, symbol, resolution);
   const paneDrawings = useDrawingStore((s) => s.drawings[dkey]);
+  const indicators = useIndicatorStore((s) => s.indicators[pane.id]);
+  const removeIndicator = useIndicatorStore((s) => s.removeIndicator);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -157,6 +161,8 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
   const drawingsRef = useRef<Drawing[]>([]);
   const previewRef = useRef<Drawing | null>(null);
   const pendingStartRef = useRef<DrawingPoint | null>(null);
+  const indicatorMgrRef = useRef<IndicatorManager | null>(null);
+  const configsRef = useRef<IndicatorConfig[]>([]);
 
   const [status, setStatus] = useState<PaneStatus>('loading');
   const [freshness, setFreshness] = useState<Freshness>('loading');
@@ -169,6 +175,7 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
     const chart = createChart(el, baseChartOptions(showGrid, crosshair === 'magnet'));
     chart.resize(el.clientWidth, el.clientHeight);
     chartRef.current = chart;
+    indicatorMgrRef.current = new IndicatorManager(chart);
 
     const unobserve = observeResize(el, (w, h) => {
       if (w > 0 && h > 0) chart.resize(w, h);
@@ -179,6 +186,7 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      indicatorMgrRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -212,6 +220,9 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
       series.setData(toSeriesData(candlesRef.current, chartType));
       chart.timeScale().fitContent();
     }
+    // Re-add indicators after the new main series so overlays draw on top.
+    indicatorMgrRef.current?.rebuild(configsRef.current);
+    indicatorMgrRef.current?.updateData(configsRef.current, candlesRef.current);
   }, [chartType]);
 
   // 4) Load history when symbol / resolution change.
@@ -236,6 +247,7 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
           seriesRef.current.setData(toSeriesData(result.candles, chartType));
           chartRef.current?.timeScale().fitContent();
         }
+        indicatorMgrRef.current?.updateData(configsRef.current, result.candles);
         setStatus(result.candles.length ? 'ready' : 'notfound');
       } catch (err) {
         if (cancelled) return;
@@ -327,6 +339,13 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
     };
   }, [activeTool, dkey, addDrawing, setTool]);
 
+  // 7) Indicators — rebuild series when the config set changes, refill from candles.
+  useEffect(() => {
+    configsRef.current = indicators ?? [];
+    indicatorMgrRef.current?.rebuild(configsRef.current);
+    indicatorMgrRef.current?.updateData(configsRef.current, candlesRef.current);
+  }, [indicators]);
+
   const tone = changeTone(quote?.changePercent);
   const toneClass = tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text-muted';
 
@@ -414,6 +433,29 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
         {activeTool !== 'cursor' && (
           <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded bg-bg-panel/90 px-2 py-0.5 text-2xs text-accent shadow">
             {DRAW_HINT[activeTool] ?? 'Drawing…'}
+          </div>
+        )}
+        {symbol && indicators && indicators.length > 0 && (
+          <div className="pointer-events-none absolute left-1 top-1 z-10 flex flex-col items-start gap-0.5">
+            {indicators.map((c) => (
+              <div
+                key={c.id}
+                className="group/ind pointer-events-auto flex items-center gap-1 rounded bg-bg-panel/80 px-1.5 py-0.5 text-2xs"
+              >
+                <span style={{ color: c.color }} className="font-medium">
+                  {INDICATOR_META[c.type].label}
+                  {c.period ? ` ${c.period}` : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeIndicator(pane.id, c.id)}
+                  className="text-text-muted opacity-0 group-hover/ind:opacity-100 hover:text-down"
+                  title="Remove indicator"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
         {status === 'empty' && (

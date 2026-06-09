@@ -13,6 +13,7 @@ vi.mock('lightweight-charts', () => {
     detachPrimitive: vi.fn(),
     priceToCoordinate: vi.fn(() => 0),
     coordinateToPrice: vi.fn(() => 0),
+    createPriceLine: vi.fn(),
   };
   const timeScale = {
     fitContent: vi.fn(),
@@ -30,6 +31,10 @@ vi.mock('lightweight-charts', () => {
     unsubscribeClick: vi.fn(),
     subscribeCrosshairMove: vi.fn(),
     unsubscribeCrosshairMove: vi.fn(),
+    panes: vi.fn(() => []),
+    addPane: vi.fn(() => ({ setHeight: vi.fn() })),
+    removePane: vi.fn(),
+    priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
   };
   return {
     createChart: vi.fn(() => chart),
