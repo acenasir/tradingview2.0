@@ -33,8 +33,14 @@ This repo currently implements **build steps 1–4** of the plan:
     retracement and text — drawn via Lightweight Charts series primitives
     (anchored in logical/price space so they hold position on pan/zoom). Select,
     drag-to-reshape and delete with the cursor tool. Persisted per pane + symbol + timeframe.
+11. ✅ **Company news**: recent headlines for the active US symbol (Finnhub) in the
+    right-sidebar News tab.
+12. ✅ **Access guard**: optional shared `APP_PASSCODE` enforced by the `/api` proxy,
+    with a passcode unlock screen (fails open locally when there is no backend).
 
-Still to come: company news, and Vercel deployment hardening.
+The build plan (steps 1–12) is functionally complete. Future polish: live last-bar
+updates from ticks, anchored/session VWAP, an always-on host for the Alpaca stream,
+and paid SIP data.
 
 ### Graceful by design
 
@@ -84,7 +90,7 @@ Data is recommended (global coverage + symbol search).
 | Provider | Used for | Free tier | Get a key |
 |---|---|---|---|
 | **Twelve Data** | History, search, delayed quotes (global) | ~8 req/min, ~800/day | https://twelvedata.com/ |
-| **Finnhub** | US realtime WS, company news *(later step)* | 60 req/min | https://finnhub.io/ |
+| **Finnhub** | US realtime WS (`VITE_FINNHUB_TOKEN`) + company news (`FINNHUB_KEY`) | 60 req/min | https://finnhub.io/ |
 | **Alpha Vantage** | Last-resort delayed fallback *(optional)* | 25 req/day | https://www.alphavantage.co/support/#api-key |
 | **Alpaca** | Paper trading + IEX data *(later step)* | $100k virtual | https://alpaca.markets/ → Paper Trading → API Keys |
 
@@ -198,9 +204,16 @@ vercel --prod         # production
 routes → `index.html`).
 
 **Access guard (before `--prod`):** the deployed app has no login. Set
-`APP_PASSCODE` in Vercel env — the `/api` functions then require an
-`x-app-passcode` header so random visitors can't burn your quotas. (Alternatively
-enable Vercel's built-in password protection.)
+`APP_PASSCODE` in Vercel env — the `/api` functions then require a matching
+`x-app-passcode` header so random visitors can't place paper orders or burn your
+quotas. On load the app shows a **passcode unlock screen** (the entered code is
+stored in your browser and attached to every `/api` call). When no `APP_PASSCODE`
+is set, or no backend is reachable (plain `vite dev`), the gate stays out of the
+way. (Alternatively, enable Vercel's built-in password protection.)
+
+> Finnhub note: news uses the **server-side** `FINNHUB_KEY` (via the proxy) while
+> realtime streaming uses the **client-exposed** `VITE_FINNHUB_TOKEN` — these can be
+> the same Finnhub key, just set in both places.
 
 ---
 

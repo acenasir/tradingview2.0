@@ -2,6 +2,7 @@ import { ChevronRight, Info, ListChecks, Newspaper, Wallet } from 'lucide-react'
 import type { ComponentType } from 'react';
 import { useUiStore, type SidebarTab } from '../../store/uiStore';
 import { Details } from './Details';
+import { News } from './News';
 import { TradePanel } from './TradePanel';
 import { Watchlist } from './Watchlist';
 
@@ -11,15 +12,6 @@ const TABS: { id: SidebarTab; label: string; icon: ComponentType<{ className?: s
   { id: 'trade', label: 'Trade', icon: Wallet },
   { id: 'news', label: 'News', icon: Newspaper },
 ];
-
-function ComingSoon({ title, note }: { title: string; note: string }) {
-  return (
-    <div className="px-4 py-8 text-center">
-      <p className="text-sm font-medium text-text">{title}</p>
-      <p className="mx-auto mt-2 max-w-[220px] text-xs leading-relaxed text-text-muted">{note}</p>
-    </div>
-  );
-}
 
 export function RightSidebar() {
   const tab = useUiStore((s) => s.sidebarTab);
@@ -73,12 +65,7 @@ export function RightSidebar() {
         {tab === 'watchlist' && <Watchlist />}
         {tab === 'details' && <Details />}
         {tab === 'trade' && <TradePanel />}
-        {tab === 'news' && (
-          <ComingSoon
-            title="News"
-            note="Company news for the active symbol (via Finnhub) arrives in a later step."
-          />
-        )}
+        {tab === 'news' && <News />}
       </div>
     </div>
   );
