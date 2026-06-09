@@ -19,9 +19,13 @@ This repo currently implements **build steps 1–4** of the plan:
    selection, per-pane config, localStorage persistence, shared `ResizeObserver`
 4. ✅ Data layer + **delayed-free** mode (default): provider abstraction, Twelve Data
    provider, shared poller with caching + rate-limit guard, `/api` proxy, freshness badges
+10. ✅ Drawing tools (brought forward): **trend line, horizontal line, Fibonacci
+    retracement** — drawn on the chart via Lightweight Charts series primitives
+    (anchored in logical/price space so they hold position on pan/zoom), persisted
+    per pane + symbol + timeframe. Ray / rectangle / text are stubbed.
 
 Still to come: paper trading (Alpaca), realtime streaming (Finnhub/Alpaca IEX),
-indicators, drawing tools, news, and Vercel deployment hardening.
+indicators, news, the remaining drawing tools, and Vercel deployment hardening.
 
 ### Graceful by design
 
@@ -110,6 +114,11 @@ Each pane and watchlist row shows a **freshness badge**: `delayed`, `live · IEX
 
 Click a pane to make it **active** — the top toolbar (symbol, timeframe, chart
 type) targets the active pane. Double-click a pane header to maximize/restore.
+
+**Drawing:** pick a tool from the left toolbar — **trend line** / **Fib** (click two
+points) or **horizontal line** (click once). `Esc` cancels an in-progress drawing;
+the eraser clears the active pane's drawings. Drawings are saved per
+pane + symbol + timeframe.
 
 ---
 

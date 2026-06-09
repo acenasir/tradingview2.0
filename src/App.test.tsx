@@ -6,14 +6,30 @@ import App from './App';
 // Mock the imperative charting engine — jsdom has no canvas, and we only want
 // to prove the React workspace mounts and the grid populates from the stores.
 vi.mock('lightweight-charts', () => {
-  const series = { setData: vi.fn(), applyOptions: vi.fn() };
+  const series = {
+    setData: vi.fn(),
+    applyOptions: vi.fn(),
+    attachPrimitive: vi.fn(),
+    detachPrimitive: vi.fn(),
+    priceToCoordinate: vi.fn(() => 0),
+    coordinateToPrice: vi.fn(() => 0),
+  };
+  const timeScale = {
+    fitContent: vi.fn(),
+    logicalToCoordinate: vi.fn(() => 0),
+    coordinateToLogical: vi.fn(() => 0),
+  };
   const chart = {
     addSeries: vi.fn(() => series),
     removeSeries: vi.fn(),
     resize: vi.fn(),
     remove: vi.fn(),
     applyOptions: vi.fn(),
-    timeScale: vi.fn(() => ({ fitContent: vi.fn() })),
+    timeScale: vi.fn(() => timeScale),
+    subscribeClick: vi.fn(),
+    unsubscribeClick: vi.fn(),
+    subscribeCrosshairMove: vi.fn(),
+    unsubscribeCrosshairMove: vi.fn(),
   };
   return {
     createChart: vi.fn(() => chart),

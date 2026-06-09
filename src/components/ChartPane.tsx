@@ -11,6 +11,7 @@ import {
   type DeepPartial,
   type IChartApi,
   type ISeriesApi,
+  type MouseEventParams,
   type SeriesDataItemTypeMap,
   type SeriesType,
   type UTCTimestamp,
@@ -26,11 +27,26 @@ import { freshnessClasses, freshnessLabel, freshnessTitle } from '../lib/freshne
 import { useLayoutStore } from '../store/layoutStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { observeResize } from '../lib/resize';
+import { DrawingsPrimitive } from '../lib/drawingPrimitive';
+import {
+  drawingKey,
+  newDrawingId,
+  useDrawingStore,
+  type Drawing,
+  type DrawingPoint,
+} from '../store/drawingStore';
 import { SymbolSearch } from './SymbolSearch';
 
 const UP = '#26a69a';
 const DOWN = '#ef5350';
 const BLUE = '#2962ff';
+const DRAW_COLOR = '#2962ff';
+
+const DRAW_HINT: Record<string, string> = {
+  trendline: 'Click two points · Esc to cancel',
+  fib: 'Click two points · Esc to cancel',
+  hline: 'Click to place horizontal line · Esc to cancel',
+};
 
 type AnySeriesData = SeriesDataItemTypeMap[SeriesType];
 type PaneStatus = 'loading' | 'ready' | 'error' | 'notfound' | 'empty';
@@ -125,10 +141,20 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
   const { symbol, resolution, chartType } = pane;
   const quote = useQuote(symbol || undefined);
 
+  const activeTool = useDrawingStore((s) => s.activeTool);
+  const setTool = useDrawingStore((s) => s.setTool);
+  const addDrawing = useDrawingStore((s) => s.addDrawing);
+  const dkey = drawingKey(pane.id, symbol, resolution);
+  const paneDrawings = useDrawingStore((s) => s.drawings[dkey]);
+
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const candlesRef = useRef<Candle[]>([]);
+  const drawingPrimitiveRef = useRef<DrawingsPrimitive | null>(null);
+  const drawingsRef = useRef<Drawing[]>([]);
+  const previewRef = useRef<Drawing | null>(null);
+  const pendingStartRef = useRef<DrawingPoint | null>(null);
 
   const [status, setStatus] = useState<PaneStatus>('loading');
   const [freshness, setFreshness] = useState<Freshness>('loading');
@@ -170,6 +196,16 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
     }
     const series = createSeries(chart, chartType);
     seriesRef.current = series;
+    // Attach the (persistent) drawing primitive to the freshly created series.
+    let primitive = drawingPrimitiveRef.current;
+    if (!primitive) {
+      primitive = new DrawingsPrimitive({
+        getDrawings: () => drawingsRef.current,
+        getPreview: () => previewRef.current,
+      });
+      drawingPrimitiveRef.current = primitive;
+    }
+    series.attachPrimitive(primitive);
     if (candlesRef.current.length) {
       series.setData(toSeriesData(candlesRef.current, chartType));
       chart.timeScale().fitContent();
@@ -211,6 +247,83 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
     // chartType handled by effect (3); excluded here to avoid double-fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, resolution]);
+
+  // 5) Keep the drawing primitive's data in sync with the store + redraw.
+  useEffect(() => {
+    drawingsRef.current = paneDrawings ?? [];
+    drawingPrimitiveRef.current?.requestUpdate();
+  }, [paneDrawings]);
+
+  // 6) Drawing interaction — capture clicks to place shapes when a tool is active.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || activeTool === 'cursor') return;
+    const ts = chart.timeScale();
+
+    const toPoint = (param: MouseEventParams): DrawingPoint | null => {
+      const series = seriesRef.current;
+      if (!series || !param.point) return null;
+      const price = series.coordinateToPrice(param.point.y);
+      const logical = param.logical ?? ts.coordinateToLogical(param.point.x);
+      if (price == null || logical == null) return null;
+      const time = typeof param.time === 'number' ? param.time : 0;
+      return { time, logical: logical as number, price: price as number };
+    };
+
+    const onClick = (param: MouseEventParams) => {
+      const pt = toPoint(param);
+      if (!pt) return;
+      if (activeTool === 'hline') {
+        addDrawing(dkey, { id: newDrawingId(), type: 'hline', points: [pt], color: DRAW_COLOR });
+        setTool('cursor');
+        return;
+      }
+      if (!pendingStartRef.current) {
+        pendingStartRef.current = pt;
+      } else {
+        const type = activeTool === 'fib' ? 'fib' : 'trendline';
+        addDrawing(dkey, {
+          id: newDrawingId(),
+          type,
+          points: [pendingStartRef.current, pt],
+          color: DRAW_COLOR,
+        });
+        pendingStartRef.current = null;
+        previewRef.current = null;
+        setTool('cursor');
+        drawingPrimitiveRef.current?.requestUpdate();
+      }
+    };
+
+    const onMove = (param: MouseEventParams) => {
+      if (!pendingStartRef.current) return;
+      const pt = toPoint(param);
+      if (!pt) return;
+      const type = activeTool === 'fib' ? 'fib' : 'trendline';
+      previewRef.current = { id: 'preview', type, points: [pendingStartRef.current, pt], color: DRAW_COLOR };
+      drawingPrimitiveRef.current?.requestUpdate();
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      pendingStartRef.current = null;
+      previewRef.current = null;
+      setTool('cursor');
+      drawingPrimitiveRef.current?.requestUpdate();
+    };
+
+    chart.subscribeClick(onClick);
+    chart.subscribeCrosshairMove(onMove);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      chart.unsubscribeClick(onClick);
+      chart.unsubscribeCrosshairMove(onMove);
+      window.removeEventListener('keydown', onKey);
+      pendingStartRef.current = null;
+      previewRef.current = null;
+      drawingPrimitiveRef.current?.requestUpdate();
+    };
+  }, [activeTool, dkey, addDrawing, setTool]);
 
   const tone = changeTone(quote?.changePercent);
   const toneClass = tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text-muted';
@@ -293,7 +406,12 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
 
       {/* Chart area */}
       <div className="relative min-h-0 flex-1">
-        <div ref={wrapRef} className="absolute inset-0" />
+        <div ref={wrapRef} className={`absolute inset-0 ${activeTool !== 'cursor' ? 'cursor-crosshair' : ''}`} />
+        {activeTool !== 'cursor' && (
+          <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded bg-bg-panel/90 px-2 py-0.5 text-2xs text-accent shadow">
+            {DRAW_HINT[activeTool] ?? 'Drawing…'}
+          </div>
+        )}
         {status !== 'ready' && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-text-muted">
             {status === 'loading' && 'Loading…'}
