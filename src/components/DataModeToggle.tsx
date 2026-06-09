@@ -12,7 +12,7 @@ const OPTIONS: { mode: DataMode; label: string; title: string; icon: typeof Time
   {
     mode: 'realtime',
     label: 'Realtime',
-    title: 'Realtime mode — streams where available (IEX/Finnhub). Streaming wired in a later step; falls back to delayed polling for now.',
+    title: 'Realtime mode — streams US tickers live via Finnhub (needs VITE_FINNHUB_TOKEN). Symbols with no free realtime source fall back to delayed polling.',
     icon: Radio,
   },
 ];

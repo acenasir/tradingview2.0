@@ -23,6 +23,9 @@ This repo currently implements **build steps 1–4** of the plan:
    (market/limit/stop/stop-limit/trailing + bracket + fractional/notional + short),
    open orders with cancel, status-bar equity — all REST through a **paper-host-only**
    `/api/alpaca` proxy with a live-host guard.
+8. ✅ **Realtime streaming (opt-in)**: US tickers stream live via Finnhub's
+   browser WebSocket (one reconnecting, ref-counted socket); per-symbol graceful
+   fallback to delayed polling; live connection state in the status bar.
 9. ✅ **Indicators**: SMA, EMA, Bollinger, VWAP and Volume on the price pane;
    RSI and MACD in sub-panes. Pure, unit-tested math; per-pane configs with
    editable period/color via the Indicators menu and a removable legend.
@@ -31,7 +34,7 @@ This repo currently implements **build steps 1–4** of the plan:
     (anchored in logical/price space so they hold position on pan/zoom). Select,
     drag-to-reshape and delete with the cursor tool. Persisted per pane + symbol + timeframe.
 
-Still to come: realtime streaming (Finnhub/Alpaca IEX), news, and Vercel deployment hardening.
+Still to come: company news, and Vercel deployment hardening.
 
 ### Graceful by design
 
@@ -118,9 +121,12 @@ aren't set, the Trade tab shows setup instructions and the status bar reads `Pap
 - **`delayed-free` (default):** polls free delayed REST endpoints on a shared
   interval (15s by default, configurable in Settings). Aggressively cached and
   rate-limited to respect free daily/minute caps. 100% serverless-compatible.
-- **`realtime` (opt-in, later step):** streams where available (Finnhub WS for
-  US, Alpaca IEX). Symbols without a free realtime source degrade gracefully to
-  delayed polling and are badged accordingly.
+- **`realtime` (opt-in):** US tickers stream live via Finnhub's browser WebSocket
+  (set `VITE_FINNHUB_TOKEN` — client-exposed by design), seeded once with a delayed
+  quote so change% is correct. Symbols with no free realtime source — non-US,
+  forex/crypto pairs, or no token — degrade gracefully to delayed polling and are
+  badged accordingly. (Alpaca's IEX stream needs the secret key, so it is not
+  streamed from the browser — that would need an always-on host.)
 
 Each pane and watchlist row shows a **freshness badge**: `delayed`, `live · IEX`,
 `live`, `EOD`, or `demo`.

@@ -1,59 +1,134 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useSettingsStore } from '../store/settingsStore';
+import { finnhubAvailable, finnhubStream } from './providers/finnhub';
 import { getQuote } from './providers/router';
-import type { Quote } from './providers/types';
+import type { Quote, Tick } from './providers/types';
+import type { SocketStatus } from './socket';
 
 /**
- * A single shared polling loop for delayed quotes. Components subscribe to the
- * symbols they care about (ref-counted); the loop fetches them on the shared
- * interval and writes results into a Zustand store. Caching in the router keeps
- * us inside free-tier limits, and one loop means 16 panes never spin up 16 timers.
+ * Shared quote distribution. In delayed-free mode every subscribed symbol is
+ * polled on the shared interval. In realtime mode, eligible US tickers are
+ * streamed live via Finnhub (seeded once with a delayed quote for prev-close so
+ * change% is correct); everything else gracefully falls back to delayed polling.
  */
 
 interface QuoteStoreState {
   quotes: Record<string, Quote>;
   polling: boolean;
   lastPollAt: number | null;
+  /** True when ≥1 symbol is being streamed. */
+  streaming: boolean;
+  streamStatus: SocketStatus | 'idle';
 }
 
 export const useQuoteStore = create<QuoteStoreState>(() => ({
   quotes: {},
   polling: false,
   lastPollAt: null,
+  streaming: false,
+  streamStatus: 'idle',
 }));
 
 const refCounts = new Map<string, number>();
+const streamed = new Set<string>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 
-async function pollSymbols(symbols: string[]): Promise<void> {
-  if (!symbols.length) return;
-  useQuoteStore.setState({ polling: true });
+/** A symbol is stream-eligible when realtime mode is on, a Finnhub token exists,
+ *  and it looks like a plain US ticker (no forex/crypto "/" pair). */
+function canStream(symbol: string): boolean {
+  return (
+    useSettingsStore.getState().dataMode === 'realtime' &&
+    finnhubAvailable() &&
+    /^[A-Z][A-Z.]*$/.test(symbol)
+  );
+}
+
+function applyTick(t: Tick): void {
+  const cur = useQuoteStore.getState().quotes[t.symbol];
+  if (!streamed.has(t.symbol)) return; // ignore stale ticks for unsubscribed symbols
+  const prevClose = cur?.prevClose;
+  const change = prevClose != null ? t.price - prevClose : (cur?.change ?? 0);
+  const changePercent = prevClose ? (change / prevClose) * 100 : (cur?.changePercent ?? 0);
+  const quote: Quote = {
+    symbol: t.symbol,
+    price: t.price,
+    change,
+    changePercent,
+    prevClose,
+    open: cur?.open,
+    high: cur?.high,
+    low: cur?.low,
+    volume: cur?.volume,
+    timestamp: t.timestamp || Date.now(),
+    freshness: 'realtime',
+  };
+  useQuoteStore.setState((s) => ({ quotes: { ...s.quotes, [t.symbol]: quote } }));
+}
+
+finnhubStream.onTick(applyTick);
+finnhubStream.onStatus((status) => useQuoteStore.setState({ streamStatus: status }));
+
+/** Fetch a delayed quote once to seed prev-close/open for newly streamed symbols. */
+async function seed(symbols: string[]): Promise<void> {
   const results = await Promise.allSettled(symbols.map((s) => getQuote(s)));
-  // Read AFTER awaiting so we merge with any updates that landed meanwhile.
   const next = { ...useQuoteStore.getState().quotes };
   results.forEach((r, i) => {
-    if (r.status === 'fulfilled') next[symbols[i]] = r.value;
+    if (r.status !== 'fulfilled') return;
+    const q = r.value;
+    const existing = next[symbols[i]];
+    // Keep a live price if a tick already arrived; just refresh the daily anchors.
+    next[symbols[i]] =
+      existing && existing.freshness === 'realtime'
+        ? { ...existing, prevClose: q.prevClose, open: q.open, high: q.high, low: q.low }
+        : q;
+  });
+  useQuoteStore.setState({ quotes: next });
+}
+
+/** Re-partition subscribed symbols into streamed vs polled. */
+function recompute(): void {
+  const all = [...refCounts.keys()];
+  const next = new Set(all.filter(canStream));
+  const toSeed = [...next].filter((s) => !streamed.has(s));
+  streamed.clear();
+  next.forEach((s) => streamed.add(s));
+  finnhubStream.setSymbols([...streamed]);
+  useQuoteStore.setState({ streaming: streamed.size > 0, streamStatus: streamed.size > 0 ? useQuoteStore.getState().streamStatus : 'idle' });
+  if (toSeed.length) void seed(toSeed);
+}
+
+async function pollOnce(): Promise<void> {
+  const polled = [...refCounts.keys()].filter((s) => !streamed.has(s));
+  if (!polled.length) {
+    useQuoteStore.setState({ polling: false, lastPollAt: Date.now() });
+    return;
+  }
+  useQuoteStore.setState({ polling: true });
+  const results = await Promise.allSettled(polled.map((s) => getQuote(s)));
+  const next = { ...useQuoteStore.getState().quotes };
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') next[polled[i]] = r.value;
   });
   useQuoteStore.setState({ quotes: next, polling: false, lastPollAt: Date.now() });
 }
 
 function schedule(): void {
   if (timer) clearTimeout(timer);
-  const interval = useSettingsStore.getState().pollIntervalMs;
-  timer = setTimeout(tick, interval);
+  timer = setTimeout(tick, useSettingsStore.getState().pollIntervalMs);
 }
 
 async function tick(): Promise<void> {
-  await pollSymbols([...refCounts.keys()]);
+  await pollOnce();
   if (running) schedule();
 }
 
 function start(): void {
   if (running) return;
   running = true;
-  void tick(); // poll immediately, then on the interval
+  recompute();
+  void tick();
 }
 
 function stop(): void {
@@ -62,19 +137,19 @@ function stop(): void {
     clearTimeout(timer);
     timer = null;
   }
+  finnhubStream.setSymbols([]);
+  streamed.clear();
+  useQuoteStore.setState({ streaming: false, streamStatus: 'idle' });
 }
 
-/** Subscribe to one or more symbols. Returns an unsubscribe function. */
 export function subscribeSymbols(symbols: string[]): () => void {
-  const added: string[] = [];
-  for (const s of symbols) {
-    const count = refCounts.get(s) ?? 0;
-    refCounts.set(s, count + 1);
-    if (count === 0) added.push(s);
+  for (const s of symbols) refCounts.set(s, (refCounts.get(s) ?? 0) + 1);
+  if (!running) {
+    start();
+  } else {
+    recompute();
+    void pollOnce(); // fetch any newly-added delayed symbols immediately
   }
-  if (!running) start();
-  else if (added.length) void pollSymbols(added); // fetch brand-new symbols right away
-
   return () => {
     for (const s of symbols) {
       const count = (refCounts.get(s) ?? 1) - 1;
@@ -82,15 +157,20 @@ export function subscribeSymbols(symbols: string[]): () => void {
       else refCounts.set(s, count);
     }
     if (refCounts.size === 0) stop();
+    else recompute();
   };
 }
 
-// Reschedule promptly when the user changes the poll interval.
+// React to data-mode / poll-interval changes.
 useSettingsStore.subscribe((state, prev) => {
-  if (running && state.pollIntervalMs !== prev.pollIntervalMs) schedule();
+  if (!running) return;
+  if (state.dataMode !== prev.dataMode) {
+    recompute();
+    void pollOnce();
+  }
+  if (state.pollIntervalMs !== prev.pollIntervalMs) schedule();
 });
 
-/** Subscribe to a single symbol and read its latest quote. */
 export function useQuote(symbol?: string): Quote | undefined {
   useEffect(() => {
     if (!symbol) return;
@@ -99,13 +179,11 @@ export function useQuote(symbol?: string): Quote | undefined {
   return useQuoteStore((s) => (symbol ? s.quotes[symbol] : undefined));
 }
 
-/** Subscribe to many symbols (e.g. a watchlist) and read the quote map. */
 export function useQuotes(symbols: string[]): Record<string, Quote> {
   const key = symbols.join(',');
   useEffect(() => {
     if (!symbols.length) return;
     return subscribeSymbols(symbols);
-    // key captures the symbol set; symbols identity changes each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return useQuoteStore((s) => s.quotes);
