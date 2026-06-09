@@ -73,3 +73,19 @@ export async function apiPost<T>(path: string, payload: unknown, signal?: AbortS
   }
   return (await res.json()) as T;
 }
+
+/** DELETE via the local proxy. Tolerates an empty (204) response body. */
+export async function apiDelete<T>(path: string): Promise<T> {
+  const res = await fetch(path, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) {
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(res.status, path, body);
+  }
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}

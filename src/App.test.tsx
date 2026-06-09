@@ -45,6 +45,15 @@ vi.mock('lightweight-charts', () => {
   };
 });
 
+// Avoid real account fetches from the always-mounted status bar during render.
+vi.mock('./trading/poller', () => ({
+  useTrading: () => ({ positions: [], openOrders: [], configured: false, polling: false, lastPollAt: null }),
+  useTradingStore: () => ({ positions: [], openOrders: [], configured: false }),
+  subscribeTrading: () => () => {},
+  kickTradingRefresh: () => {},
+  refreshTrading: async () => {},
+}));
+
 beforeAll(() => {
   // jsdom has no ResizeObserver.
   globalThis.ResizeObserver = class {

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuoteStore } from '../data/quotes';
-import { formatClock } from '../lib/format';
+import { formatClock, formatPrice } from '../lib/format';
 import { useSettingsStore } from '../store/settingsStore';
+import { useTrading } from '../trading/poller';
 
 export function StatusBar() {
   const [now, setNow] = useState(() => new Date());
@@ -10,6 +11,7 @@ export function StatusBar() {
   const dataMode = useSettingsStore((s) => s.dataMode);
   const pollIntervalMs = useSettingsStore((s) => s.pollIntervalMs);
   const timezone = useSettingsStore((s) => s.timezone);
+  const { account, configured } = useTrading();
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -47,7 +49,13 @@ export function StatusBar() {
         <span className="font-mono">UTC {formatClock(now, 'UTC')}</span>
         <span className="font-mono">{formatClock(now, timezone || undefined)} local</span>
         <span className="text-border-strong">·</span>
-        <span title="Paper trading wired in a later step">Paper: —</span>
+        <span title="Alpaca paper account equity (simulated funds)">
+          {configured === false
+            ? 'Paper: off'
+            : account
+              ? `Paper $${formatPrice(Number(account.equity))}`
+              : 'Paper …'}
+        </span>
         <span className="text-border-strong">·</span>
         <a
           href="https://www.tradingview.com/"

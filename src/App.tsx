@@ -6,6 +6,7 @@ import { StatusBar } from './components/StatusBar';
 import { TopToolbar } from './components/TopToolbar';
 import { LAYOUTS, type LayoutPreset } from './lib/layouts';
 import { useLayoutStore } from './store/layoutStore';
+import { useUiStore } from './store/uiStore';
 
 const SHORTCUT_TO_PRESET = new Map<string, LayoutPreset>(LAYOUTS.map((l) => [l.shortcut, l.preset]));
 
@@ -17,6 +18,7 @@ function isTypingTarget(el: EventTarget | null): boolean {
 
 export default function App() {
   const setPreset = useLayoutStore((s) => s.setPreset);
+  const openTrade = useUiStore((s) => s.openTrade);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -31,6 +33,18 @@ export default function App() {
 
       if (isTypingTarget(e.target)) return;
 
+      // b/s open the buy/sell ticket for the active pane's symbol.
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        openTrade('buy');
+        return;
+      }
+      if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        openTrade('sell');
+        return;
+      }
+
       // 1–9 and 'g' switch layout presets.
       const preset = SHORTCUT_TO_PRESET.get(e.key.toLowerCase());
       if (preset) {
@@ -41,7 +55,7 @@ export default function App() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setPreset]);
+  }, [setPreset, openTrade]);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-bg text-text">

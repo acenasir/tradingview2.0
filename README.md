@@ -19,13 +19,17 @@ This repo currently implements **build steps 1–4** of the plan:
    selection, per-pane config, localStorage persistence, shared `ResizeObserver`
 4. ✅ Data layer + **delayed-free** mode (default): provider abstraction, Twelve Data
    provider, shared poller with caching + rate-limit guard, `/api` proxy, freshness badges
+7. ✅ **Paper trading (Alpaca)**: account strip, positions, order ticket
+   (market/limit/stop/stop-limit/trailing + bracket + fractional/notional + short),
+   open orders with cancel, status-bar equity — all REST through a **paper-host-only**
+   `/api/alpaca` proxy with a live-host guard.
 10. ✅ Drawing tools (brought forward): **trend line, horizontal line, Fibonacci
     retracement** — drawn on the chart via Lightweight Charts series primitives
     (anchored in logical/price space so they hold position on pan/zoom), persisted
     per pane + symbol + timeframe. Ray / rectangle / text are stubbed.
 
-Still to come: paper trading (Alpaca), realtime streaming (Finnhub/Alpaca IEX),
-indicators, news, the remaining drawing tools, and Vercel deployment hardening.
+Still to come: realtime streaming (Finnhub/Alpaca IEX), indicators, news, the
+remaining drawing tools, and Vercel deployment hardening.
 
 ### Graceful by design
 
@@ -85,6 +89,28 @@ reach the browser bundle. Rate limits are noted inline at each call site.
 
 ---
 
+## Paper trading (Alpaca)
+
+OpenChart trades **only against Alpaca's paper endpoint** (`paper-api.alpaca.markets`)
+— fake money, real order simulation. The proxy host is hardcoded and the app
+**refuses the live-money host**, so there is no way to route a real order.
+
+1. Create a free Alpaca account → **Paper Trading** → generate API keys.
+2. Put them in `.env` (and your Vercel env): `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY`.
+3. Run via `vercel dev` (the secret key must stay server-side). Open the **Trade**
+   tab (or press `b` / `s`). The panel shows a **PAPER — simulated funds** banner,
+   account equity / buying power / cash / day P&L, an order ticket
+   (market · limit · stop · stop-limit · trailing-stop, with bracket TP/SL,
+   fractional/notional, and short selling), open orders (cancel / cancel-all), and
+   live positions (with one-click close).
+
+Order/position/account updates are fetched by REST polling (every ~6s), which works
+identically locally and on Vercel — no persistent WebSocket required. If the keys
+aren't set, the Trade tab shows setup instructions and the status bar reads `Paper: off`.
+
+**Reset the paper account:** there's no API for it — use the Alpaca dashboard
+(Paper Trading → account menu → **Reset**) to restore the $100k virtual balance.
+
 ## Delayed vs. realtime
 
 - **`delayed-free` (default):** polls free delayed REST endpoints on a shared
@@ -111,6 +137,7 @@ Each pane and watchlist row shows a **freshness badge**: `delayed`, `live · IEX
 | `1`–`8` | Switch layout preset (1, 2┃, 2━, 3, 4, 6, 8, 9) |
 | `g` | 16-chart grid (4×4) |
 | `/` | Focus global symbol search |
+| `b` / `s` | Open the buy / sell ticket for the active pane's symbol |
 
 Click a pane to make it **active** — the top toolbar (symbol, timeframe, chart
 type) targets the active pane. Double-click a pane header to maximize/restore.

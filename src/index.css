@@ -55,4 +55,10 @@
   .oc-badge {
     @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium;
   }
+
+  /* Form input used in the order ticket */
+  .oc-input {
+    @apply h-7 w-full rounded border border-border bg-bg-input px-2 text-xs text-text-bright;
+    @apply focus:border-accent focus:outline-none;
+  }
 }
