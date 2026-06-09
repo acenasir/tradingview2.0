@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    @apply bg-bg text-text font-sans antialiased;
+    font-size: 13px;
+    overflow: hidden; /* the app manages its own scroll regions */
+  }
+
+  /* Thin TradingView-style scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #363a45 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: #363a45;
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #4a4f5e;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Toolbar icon button */
+  .oc-btn {
+    @apply inline-flex items-center justify-center rounded text-text-muted transition-colors;
+    @apply hover:bg-bg-elevated hover:text-text-bright;
+  }
+  .oc-btn-active {
+    @apply bg-bg-elevated text-accent;
+  }
+
+  /* Small pill / badge */
+  .oc-badge {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium;
+  }
+}
