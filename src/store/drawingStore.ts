@@ -3,8 +3,7 @@ import { persist } from 'zustand/middleware';
 
 export type DrawingTool = 'cursor' | 'trendline' | 'hline' | 'fib' | 'ray' | 'rectangle' | 'text';
 
-/** Tools shipped in v1 (the rest are stubbed in the toolbar). */
-export type DrawingType = 'trendline' | 'hline' | 'fib';
+export type DrawingType = 'trendline' | 'hline' | 'fib' | 'ray' | 'rectangle' | 'text';
 
 export interface DrawingPoint {
   /** Unix seconds — kept for reference/persistence. */
@@ -20,6 +19,8 @@ export interface Drawing {
   type: DrawingType;
   points: DrawingPoint[];
   color: string;
+  /** Label for the `text` type. */
+  text?: string;
 }
 
 interface DrawingState {
@@ -31,6 +32,7 @@ interface DrawingState {
 
   setTool: (tool: DrawingTool) => void;
   addDrawing: (key: string, drawing: Drawing) => void;
+  updateDrawing: (key: string, id: string, patch: Partial<Drawing>) => void;
   removeDrawing: (key: string, id: string) => void;
   clearKey: (key: string) => void;
 }
@@ -54,6 +56,14 @@ export const useDrawingStore = create<DrawingState>()(
 
       addDrawing: (key, drawing) =>
         set((s) => ({ drawings: { ...s.drawings, [key]: [...(s.drawings[key] ?? []), drawing] } })),
+
+      updateDrawing: (key, id, patch) =>
+        set((s) => ({
+          drawings: {
+            ...s.drawings,
+            [key]: (s.drawings[key] ?? []).map((d) => (d.id === id ? { ...d, ...patch } : d)),
+          },
+        })),
 
       removeDrawing: (key, id) =>
         set((s) => ({

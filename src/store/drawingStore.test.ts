@@ -30,6 +30,14 @@ describe('drawingStore', () => {
     expect(useDrawingStore.getState().drawings[k]).toEqual([]);
   });
 
+  it('updates a drawing in place', () => {
+    const k = drawingKey('p', 'AAPL', '1D');
+    const { addDrawing, updateDrawing } = useDrawingStore.getState();
+    addDrawing(k, hline('a'));
+    updateDrawing(k, 'a', { points: [{ time: 1, logical: 9, price: 250 }] });
+    expect(useDrawingStore.getState().drawings[k][0].points[0].price).toBe(250);
+  });
+
   it('keeps drawings on separate keys isolated', () => {
     const { addDrawing } = useDrawingStore.getState();
     addDrawing(drawingKey('p', 'AAPL', '1D'), hline('a'));

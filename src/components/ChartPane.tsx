@@ -11,6 +11,7 @@ import {
   type DeepPartial,
   type IChartApi,
   type ISeriesApi,
+  type Logical,
   type MouseEventParams,
   type SeriesDataItemTypeMap,
   type SeriesType,
@@ -35,6 +36,7 @@ import {
   useDrawingStore,
   type Drawing,
   type DrawingPoint,
+  type DrawingType,
 } from '../store/drawingStore';
 import { INDICATOR_META, useIndicatorStore, type IndicatorConfig } from '../store/indicatorStore';
 import { SymbolSearch } from './SymbolSearch';
@@ -47,7 +49,10 @@ const DRAW_COLOR = '#2962ff';
 const DRAW_HINT: Record<string, string> = {
   trendline: 'Click two points · Esc to cancel',
   fib: 'Click two points · Esc to cancel',
+  ray: 'Click two points · Esc to cancel',
+  rectangle: 'Click two corners · Esc to cancel',
   hline: 'Click to place horizontal line · Esc to cancel',
+  text: 'Click to place a text label',
 };
 
 const QUICK_PICKS = ['AAPL', 'MSFT', 'NVDA', 'TSLA', 'SPY', 'BTC/USD'];
@@ -148,6 +153,8 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
   const activeTool = useDrawingStore((s) => s.activeTool);
   const setTool = useDrawingStore((s) => s.setTool);
   const addDrawing = useDrawingStore((s) => s.addDrawing);
+  const updateDrawing = useDrawingStore((s) => s.updateDrawing);
+  const removeDrawing = useDrawingStore((s) => s.removeDrawing);
   const dkey = drawingKey(pane.id, symbol, resolution);
   const paneDrawings = useDrawingStore((s) => s.drawings[dkey]);
   const indicators = useIndicatorStore((s) => s.indicators[pane.id]);
@@ -161,6 +168,8 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
   const drawingsRef = useRef<Drawing[]>([]);
   const previewRef = useRef<Drawing | null>(null);
   const pendingStartRef = useRef<DrawingPoint | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  const editRef = useRef<Drawing | null>(null);
   const indicatorMgrRef = useRef<IndicatorManager | null>(null);
   const configsRef = useRef<IndicatorConfig[]>([]);
 
@@ -210,8 +219,13 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
     let primitive = drawingPrimitiveRef.current;
     if (!primitive) {
       primitive = new DrawingsPrimitive({
-        getDrawings: () => drawingsRef.current,
+        getDrawings: () => {
+          const edit = editRef.current;
+          const list = drawingsRef.current;
+          return edit ? list.map((d) => (d.id === edit.id ? edit : d)) : list;
+        },
         getPreview: () => previewRef.current,
+        getSelectedId: () => selectedIdRef.current,
       });
       drawingPrimitiveRef.current = primitive;
     }
@@ -292,13 +306,19 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
         setTool('cursor');
         return;
       }
+      if (activeTool === 'text') {
+        const text = window.prompt('Text label:')?.trim();
+        if (text) addDrawing(dkey, { id: newDrawingId(), type: 'text', points: [pt], color: DRAW_COLOR, text });
+        setTool('cursor');
+        return;
+      }
+      // two-point tools: trendline, ray, fib, rectangle
       if (!pendingStartRef.current) {
         pendingStartRef.current = pt;
       } else {
-        const type = activeTool === 'fib' ? 'fib' : 'trendline';
         addDrawing(dkey, {
           id: newDrawingId(),
-          type,
+          type: activeTool as DrawingType,
           points: [pendingStartRef.current, pt],
           color: DRAW_COLOR,
         });
@@ -313,8 +333,12 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
       if (!pendingStartRef.current) return;
       const pt = toPoint(param);
       if (!pt) return;
-      const type = activeTool === 'fib' ? 'fib' : 'trendline';
-      previewRef.current = { id: 'preview', type, points: [pendingStartRef.current, pt], color: DRAW_COLOR };
+      previewRef.current = {
+        id: 'preview',
+        type: activeTool as DrawingType,
+        points: [pendingStartRef.current, pt],
+        color: DRAW_COLOR,
+      };
       drawingPrimitiveRef.current?.requestUpdate();
     };
 
@@ -338,6 +362,116 @@ export function ChartPane({ paneIndex }: ChartPaneProps) {
       drawingPrimitiveRef.current?.requestUpdate();
     };
   }, [activeTool, dkey, addDrawing, setTool]);
+
+  // 6b) Edit mode (cursor) — select a drawing, drag its handles, delete it.
+  useEffect(() => {
+    const el = wrapRef.current;
+    const chart = chartRef.current;
+    const primitive = drawingPrimitiveRef.current;
+    if (!el || !chart || !primitive || activeTool !== 'cursor') return;
+    const ts = chart.timeScale();
+
+    const local = (e: MouseEvent) => {
+      const r = el.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const toXScreen = (logical: number) => ts.logicalToCoordinate(logical as Logical);
+    const toYScreen = (price: number) => seriesRef.current?.priceToCoordinate(price) ?? null;
+
+    const hitTest = (x: number, y: number): { id: string; pointIndex: number } | null => {
+      const list = drawingsRef.current;
+      for (let i = list.length - 1; i >= 0; i--) {
+        const d = list[i];
+        if (d.type === 'hline') {
+          const ly = toYScreen(d.points[0].price);
+          if (ly != null && Math.abs(ly - y) <= 6) return { id: d.id, pointIndex: 0 };
+          continue;
+        }
+        for (let pi = 0; pi < d.points.length; pi++) {
+          const px = toXScreen(d.points[pi].logical);
+          const py = toYScreen(d.points[pi].price);
+          if (px != null && py != null && Math.hypot(px - x, py - y) <= 9) return { id: d.id, pointIndex: pi };
+        }
+      }
+      return null;
+    };
+
+    let dragging: { id: string; pointIndex: number } | null = null;
+
+    const onMove = (e: MouseEvent) => {
+      const edit = editRef.current;
+      if (!dragging || !edit) return;
+      const { x, y } = local(e);
+      const logical = ts.coordinateToLogical(x);
+      const price = seriesRef.current?.coordinateToPrice(y) ?? null;
+      if (logical == null || price == null) return;
+      const points = edit.points.map((p) => ({ ...p }));
+      if (edit.type === 'hline') {
+        points[0] = { ...points[0], price: price as number };
+      } else {
+        points[dragging.pointIndex] = { time: points[dragging.pointIndex].time, logical: logical as number, price: price as number };
+      }
+      editRef.current = { ...edit, points };
+      primitive.requestUpdate();
+    };
+
+    const onUp = () => {
+      const edit = editRef.current;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      chart.applyOptions({ handleScroll: true, handleScale: true });
+      if (edit && dragging) updateDrawing(dkey, edit.id, { points: edit.points });
+      editRef.current = null;
+      dragging = null;
+      primitive.requestUpdate();
+    };
+
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const { x, y } = local(e);
+      const hit = hitTest(x, y);
+      if (!hit) {
+        if (selectedIdRef.current) {
+          selectedIdRef.current = null;
+          primitive.requestUpdate();
+        }
+        return; // let the chart pan
+      }
+      e.stopPropagation(); // intercept before the chart starts panning
+      selectedIdRef.current = hit.id;
+      dragging = hit;
+      const orig = drawingsRef.current.find((d) => d.id === hit.id);
+      editRef.current = orig ? { ...orig, points: orig.points.map((p) => ({ ...p })) } : null;
+      chart.applyOptions({ handleScroll: false, handleScale: false });
+      primitive.requestUpdate();
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const id = selectedIdRef.current;
+      if (!id) return;
+      e.preventDefault();
+      removeDrawing(dkey, id);
+      selectedIdRef.current = null;
+      primitive.requestUpdate();
+    };
+
+    el.addEventListener('mousedown', onDown, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      el.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      chart.applyOptions({ handleScroll: true, handleScale: true });
+      selectedIdRef.current = null;
+      editRef.current = null;
+    };
+  }, [activeTool, dkey, updateDrawing, removeDrawing]);
 
   // 7) Indicators — rebuild series when the config set changes, refill from candles.
   useEffect(() => {

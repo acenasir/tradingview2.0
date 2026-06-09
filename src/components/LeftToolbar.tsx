@@ -18,13 +18,13 @@ import { useLayoutStore } from '../store/layoutStore';
  * ray/rectangle/text are stubbed for a later step.
  */
 const TOOLS: { id: DrawingTool; icon: LucideIcon; label: string; ready: boolean }[] = [
-  { id: 'cursor', icon: MousePointer2, label: 'Cursor / crosshair', ready: true },
+  { id: 'cursor', icon: MousePointer2, label: 'Cursor — select / move / delete drawings', ready: true },
   { id: 'trendline', icon: TrendingUp, label: 'Trend line', ready: true },
+  { id: 'ray', icon: Slash, label: 'Ray', ready: true },
   { id: 'hline', icon: Minus, label: 'Horizontal line', ready: true },
+  { id: 'rectangle', icon: Square, label: 'Rectangle', ready: true },
   { id: 'fib', icon: AlignJustify, label: 'Fibonacci retracement', ready: true },
-  { id: 'ray', icon: Slash, label: 'Ray (soon)', ready: false },
-  { id: 'rectangle', icon: Square, label: 'Rectangle (soon)', ready: false },
-  { id: 'text', icon: Type, label: 'Text (soon)', ready: false },
+  { id: 'text', icon: Type, label: 'Text', ready: true },
 ];
 
 export function LeftToolbar() {

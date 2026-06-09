@@ -23,13 +23,15 @@ This repo currently implements **build steps 1–4** of the plan:
    (market/limit/stop/stop-limit/trailing + bracket + fractional/notional + short),
    open orders with cancel, status-bar equity — all REST through a **paper-host-only**
    `/api/alpaca` proxy with a live-host guard.
-10. ✅ Drawing tools (brought forward): **trend line, horizontal line, Fibonacci
-    retracement** — drawn on the chart via Lightweight Charts series primitives
-    (anchored in logical/price space so they hold position on pan/zoom), persisted
-    per pane + symbol + timeframe. Ray / rectangle / text are stubbed.
+9. ✅ **Indicators**: SMA, EMA, Bollinger, VWAP and Volume on the price pane;
+   RSI and MACD in sub-panes. Pure, unit-tested math; per-pane configs with
+   editable period/color via the Indicators menu and a removable legend.
+10. ✅ **Drawing tools**: trend line, ray, horizontal line, rectangle, Fibonacci
+    retracement and text — drawn via Lightweight Charts series primitives
+    (anchored in logical/price space so they hold position on pan/zoom). Select,
+    drag-to-reshape and delete with the cursor tool. Persisted per pane + symbol + timeframe.
 
-Still to come: realtime streaming (Finnhub/Alpaca IEX), indicators, news, the
-remaining drawing tools, and Vercel deployment hardening.
+Still to come: realtime streaming (Finnhub/Alpaca IEX), news, and Vercel deployment hardening.
 
 ### Graceful by design
 
@@ -145,10 +147,11 @@ or by clicking a watchlist row. Click a pane to make it **active** — the top
 toolbar (symbol, timeframe, chart type) targets the active pane. Double-click a
 pane header to maximize/restore.
 
-**Drawing:** pick a tool from the left toolbar — **trend line** / **Fib** (click two
-points) or **horizontal line** (click once). `Esc` cancels an in-progress drawing;
-the eraser clears the active pane's drawings. Drawings are saved per
-pane + symbol + timeframe.
+**Drawing:** pick a tool from the left toolbar — **trend line / ray / rectangle / Fib**
+(click two points), **horizontal line** (click once), or **text** (click, then type).
+`Esc` cancels an in-progress drawing. With the **cursor** tool you can **select** a
+drawing, **drag its handles** to reshape it, and press **Delete/Backspace** to remove
+it; the eraser clears the whole pane. Drawings are saved per pane + symbol + timeframe.
 
 ---
 
